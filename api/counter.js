@@ -1,11 +1,5 @@
-// 文章阅读计数器 — Upstash Redis 持久化存储
-const { Redis } = require('@upstash/redis');
-
-// 从 Vercel 环境变量自动读取连接信息
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+// 文章阅读计数器 — Redis 持久化存储
+const Redis = require('ioredis');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,10 +10,16 @@ module.exports = async (req, res) => {
 
   const key = 'pv:' + p.replace(/[^a-zA-Z0-9\-_/.]/g, '').replace(/\/+/g, '/');
 
+  const redis = new Redis(process.env.REDIS_URL, { lazyConnect: true,
+    maxRetriesPerRequest: 1,
+    connectTimeout: 3000 });
+
   try {
-    const count = req.method === 'POST' ? await redis.incr(key) : await redis.get(key);
-    res.status(200).json({ count: count || 0 });
+    const count = await redis.incr(key);
+    res.status(200).json({ count });
   } catch (_) {
     res.status(200).json({ count: 0 });
+  } finally {
+    redis.disconnect();
   }
 };
