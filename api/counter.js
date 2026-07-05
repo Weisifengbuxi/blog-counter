@@ -1,45 +1,19 @@
-// Vercel Serverless Function — 文章阅读计数器
-// 零依赖，零配置，部署即用
-// 数据存于 /tmp，函数保温期间持久保留
-
-const fs = require('fs');
-const path = require('path');
-
-const DATA_FILE = path.join('/tmp', 'pageviews.json');
-
-function readData() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-    }
-  } catch (_) {}
-  return {};
-}
-
-function writeData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data), 'utf-8');
-}
+// 文章阅读计数器 — Vercel KV 持久化存储
+const { kv } = require('@vercel/kv');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const page = req.query.page || (req.body && req.body.page);
-  if (!page) return res.status(400).json({ error: '缺少 page 参数' });
+  const p = req.query.page;
+  if (!p) return res.status(400).json({ error: 'missing page' });
 
-  // 规范化 key
-  const key = page.replace(/^\/+/, '').replace(/[^a-zA-Z0-9\-_/.]/g, '');
+  const key = 'pv:' + p.replace(/[^a-zA-Z0-9\-_/.]/g, '').replace(/\/+/g, '/');
 
-  const data = readData();
-
-  if (req.method === 'POST') {
-    data[key] = (data[key] || 0) + 1;
-    writeData(data);
-    return res.status(200).json({ count: data[key] });
+  try {
+    const count = req.method === 'POST' ? await kv.incr(key) : await kv.get(key);
+    res.status(200).json({ count: count || 0 });
+  } catch (_) {
+    res.status(200).json({ count: 0 });
   }
-
-  return res.status(200).json({ count: data[key] || 0 });
 };
